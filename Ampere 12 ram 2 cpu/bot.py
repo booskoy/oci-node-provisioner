@@ -16,7 +16,6 @@ config = {
 
 try:
     compute_client = oci.core.ComputeClient(config)
-    identity_client = oci.identity.IdentityClient(config)
     print("OCI Authentication Successful. Initializing loop sequence...")
 except Exception as e:
     print(f"Authentication Failed: {e}")
@@ -33,18 +32,8 @@ if not public_ssh_key or public_ssh_key.strip() == "":
     print("CRITICAL ERROR: OCI_PUBLIC_SSH_KEY is empty or missing from your secrets!")
     exit(1)
 
-# Dynamically fetch Availability Domains for the configured region (Singapore)
-try:
-    ads_response = identity_client.list_availability_domains(compartment_id)
-    ads = [ad.name for ad in ads_response.data]
-    print(f"Found Availability Domains for region {config['region']}: {ads}")
-except Exception as e:
-    print(f"Failed to fetch Availability Domains: {e}")
-    exit(1)
-
-if not ads:
-    print("CRITICAL ERROR: No Availability Domains found in this region.")
-    exit(1)
+# Availability Domains to cycle through
+ads = ["uufj:PHX-AD-1", "uufj:PHX-AD-2", "uufj:PHX-AD-3"]
 
 total_attempts = 60 
 
@@ -86,10 +75,8 @@ for i in range(1, total_attempts + 1):
     except oci.exceptions.ServiceError as e:
         if "Out of host capacity" in str(e) or e.status == 500:
             print(f"-> Capacity Unavailable. Resting 60 seconds...")
-        elif e.status == 429:
-            print(f"-> Rate Limit (Too many requests). Resting 60 seconds...")
         else:
-            print(f"-> API Error [{e.status}]: {e.message}")
+            print(f"-> API Error: {e.message}")
             
     if i < total_attempts:
         time.sleep(60)
