@@ -1,17 +1,27 @@
 name: Continuous OCI Python SDK Provisioner Loop
 
+# НЕ отменять_running-прогон: именно cancel-in-progress: true объясняет
+# оборванные scheduled-прогоны на 46–56 минутах (новый запуск убивал охоту
+# посреди цикла). С false прогоны выстраиваются в очередь и охота идёт
+# почти без пауз.
 concurrency:
   group: oci-provisioner-loop
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Запускать ровно 1 раз в час (этого с головой достаточно)
-  workflow_dispatch:     # Ручной запуск тоже останется доступен
+    # Раз в 2 часа. При cancel-in-progress:false очередь даёт почти
+    # непрерывную охоту; если репозиторий PRIVATE (лимит 2000 мин/мес на
+    # free-тарифе) — поставь '0 */6 * * *' или уменьши HUNT_ATTEMPTS до 25.
+    - cron: '0 */2 * * *'
+  workflow_dispatch:     # ручной запуск остаётся доступен
 
 jobs:
   attempt-build:
     runs-on: ubuntu-latest
+    # С новыми паузами (150 с после capacity, бэк-офф 300–900 с после 429)
+    # прогон может жить дольше часа — дефолтный/старый лимит его рвал.
+    timeout-minutes: 350
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -34,6 +44,9 @@ jobs:
           OCI_REGION: ${{ secrets.OCI_REGION }}
           OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
           OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
-          # ADD THIS RUNNER MAPPING LINE RIGHT HERE:
-          OCI_PUBLIC_SSH_KEY: ${{ secrets.OCI_PUBLIC_SSH_KEY }} 
+          OCI_PUBLIC_SSH_KEY: ${{ secrets.OCI_PUBLIC_SSH_KEY }}
+          # Тюнинг охоты без правок кода (значения = дефолты bot.py):
+          HUNT_ATTEMPTS: "60"
+          HUNT_SLEEP_CAPACITY: "150"
+          HUNT_SLEEP_RATE: "300"
         run: python "Ampere 12 ram 2 cpu/bot.py"
